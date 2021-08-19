@@ -1,0 +1,164 @@
+; Example PICA200 geometry shader
+.gsh point c0
+
+; Uniforms
+.fvec projection[4]
+
+; scanline x offset table. 60 * 4 = 240 (screen size)
+.fvec offsets[60]
+
+; Constants
+.constf myconst(0.0, 1.0, -1.0, 0.5)
+.constf myconst2(0.0625, 2.0, 0.25, 0.5)
+.constf screen_size(400.0, 240.0, 0.0, 0.0)
+.alias  minus_ones myconst.zzzz
+.alias  zeros      myconst.xxxx ; Vector full of zeros
+.alias  sixteenths myconst2.xxxx
+.alias  fourths    myconst2.zzzz
+.alias  halves     myconst.wwww
+.alias  ones       myconst.yyyy ; Vector full of ones
+.alias  twos       myconst2.yyyy
+
+; Outputs - this time the type *is* used
+.out oPosition  position
+.out oTexCoord0 texcoord0
+.out oTexCoord1 texcoord1
+.out oColor     color
+
+; Inputs: we will receive the following inputs:
+; v0-v3:  data of the first vertex
+; v4-v7:  data of the second vertex
+; v8-v11: data of the third vertex
+
+; Inputs
+.in iPosition_1      v0
+.in iTexCoord_1      v1
+.in iProcTexCoord_1  v2
+.in iColor_1         v3
+.in iPosition_2      v4
+.in iTexCoord_2      v5
+.in iProcTexCoord_2  v6
+.in iColor_2         v7
+;.in iPosition_2      v8
+;.in iTexCoord_2      v9
+;.in iProcTexCoord_2  v10
+;.in iColor_2         v11
+
+.alias sprite_size    r9
+.alias tex_size       r10
+.alias line_offset    r11
+.alias scanline       r12
+.alias saved_sprite   r13
+.alias saved_tex      r14
+.alias saved_proctex  r15
+
+.entry gmain
+.proc gmain
+  ; calculate size of sprite being drawn (though really it's kind of expecting 16x16)
+  ; the height is divided by 16, as we're drawing 16 one-pixel-high strips
+  ; note that the iPositions by this point are already multiplied by the projection matrix
+  ; so x and y are flipped, and are at different origin points (0,0 is the center, up/right are positive).
+  ; this was done to make it so i'm not doing all those calculations for 32x more generated vertices
+  mov sprite_size,      iPosition_1.xyzw
+  add sprite_size,      iPosition_2.xyzw, -sprite_size
+  mul sprite_size.x,    sixteenths,        sprite_size.x
+  mov sprite_size.zzww, zeros
+
+  ; calculate size of texture coordinates, again dividing by 16
+  mov tex_size,      iTexCoord_2.xyzw
+  add tex_size,      iTexCoord_1.xyzw, -tex_size
+  mul tex_size.y,    sixteenths,        tex_size.y
+  mov tex_size.zzww, zeros
+
+  mov saved_sprite,  iPosition_1
+  mov saved_tex,     iTexCoord_1
+
+  ; calculate index into scanline offset table. basically undoing the projection matrix,
+  ; to get coordinate from 0-239. then dividng by 4, since there offsets are tightly packed
+  ; into the vectors by necessity
+  mov scanline, saved_sprite.x
+  add scanline, ones,           scanline
+  mul scanline, halves,         scanline
+  add scanline, ones,          -scanline
+  mul scanline, screen_size.y,  scanline
+  mul scanline, fourths,        scanline
+  add scanline, sixteenths,     scanline    ; add a bit to account for floating point rounding error
+
+  ; emit 16 strips total, 2 triangles each
+  call emit_four_strips
+  call emit_four_strips
+  call emit_four_strips
+  call emit_four_strips
+
+  ; We're finished
+  end
+.end
+
+.proc emit_four_strips
+  mova a0.xy, scanline
+
+  mov line_offset, offsets[a0.x].w
+  call emit_strip
+
+  mov line_offset, offsets[a0.x].z
+  call emit_strip
+
+  mov line_offset, offsets[a0.x].y
+  call emit_strip
+
+  mov line_offset, offsets[a0.x].x
+  call emit_strip
+
+  add scanline, ones, scanline
+.end
+
+.proc emit_strip
+  mov r0, saved_sprite
+  mov r1, saved_tex
+  add r0.y, r0.y, line_offset
+
+  add r3, r0, sprite_size.xzzz
+  add r6, r3, sprite_size.zyzz
+
+  add r4, r1, -tex_size.zyzz
+  add r7, r4, -tex_size.xzzz
+
+  call emit_triangle
+
+  add r6, r0, sprite_size.zyzz
+  add r3, r6, sprite_size.xzzz
+
+  add r7, r1, -tex_size.xzzz
+  add r4, r7, -tex_size.zyzz
+
+  call emit_triangle
+
+  add saved_sprite.x, saved_sprite.x,  sprite_size.x
+  add saved_tex.y,    saved_tex.y,    -tex_size.y
+.end
+
+.proc emit_triangle
+  ; Emit the first vertex
+  setemit 0
+  mov oPosition,  r0
+  mov oTexCoord0, r1
+  mov oTexCoord1, iProcTexCoord_1
+  mov oColor,     iColor_1
+  emit
+
+  ; Emit the second vertex
+  setemit 1
+  mov oPosition,  r3
+  mov oTexCoord0, r4
+  mov oTexCoord1, iProcTexCoord_2
+  mov oColor,     iColor_2
+  emit
+
+  ; Emit the third vertex and finish the primitive
+  setemit 2, prim
+  mov oPosition,  r6
+  mov oTexCoord0, r7
+  mov oTexCoord1, iProcTexCoord_2
+  mov oColor,     iColor_2
+  emit
+.end
