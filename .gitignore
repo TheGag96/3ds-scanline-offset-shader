@@ -1,0 +1,15 @@
+*.bak
+/build/
+*.t3x
+*.3dsx
+*.smdh
+*.elf
+*.o
+*.exe
+/source/__SHBIN
+/working/
+/gfx/GENERATED/*/*.png
+/romfs/levels/*/*.dat
+.dub/
+/.idea/
+*.sublime-*

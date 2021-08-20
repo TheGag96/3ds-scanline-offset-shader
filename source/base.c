@@ -1,4 +1,5 @@
 // citro2d's base.c, altered slightly to work with the geometry shader.
+// Look for to see meaningful changes: !! Changed for geo shader
 
 #include "internal.h"
 #include "render2g_shbin.h"
@@ -35,7 +36,7 @@ bool C2D_Init(size_t maxObjects)
 
 	shaderProgramInit(&ctx->program);
 	shaderProgramSetVsh(&ctx->program, &ctx->shader->DVLE[0]);
-	shaderProgramSetGsh(&ctx->program, &ctx->shader->DVLE[1], 8);
+	shaderProgramSetGsh(&ctx->program, &ctx->shader->DVLE[1], 8);  //!! Changed for geo shader
 
 	AttrInfo_Init(&ctx->attrInfo);
 	AttrInfo_AddLoader(&ctx->attrInfo, 0, GPU_FLOAT,         3); // v0=position
@@ -521,7 +522,7 @@ void C2Di_FlushVtxBuf(void)
 	C2Di_Context* ctx = C2Di_GetContext();
 	size_t len = ctx->vtxBufPos - ctx->vtxBufLastPos;
 	if (!len) return;
-	C3D_DrawArrays(GPU_GEOMETRY_PRIM, ctx->vtxBufLastPos, len);
+	C3D_DrawArrays(GPU_GEOMETRY_PRIM, ctx->vtxBufLastPos, len);  //!! Changed for geo shader
 	ctx->vtxBufLastPos = ctx->vtxBufPos;
 }
 

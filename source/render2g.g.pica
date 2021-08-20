@@ -39,10 +39,6 @@
 .in iTexCoord_2      v5
 .in iProcTexCoord_2  v6
 .in iColor_2         v7
-;.in iPosition_2      v8
-;.in iTexCoord_2      v9
-;.in iProcTexCoord_2  v10
-;.in iColor_2         v11
 
 .alias sprite_size    r9
 .alias tex_size       r10
@@ -54,7 +50,7 @@
 
 .entry gmain
 .proc gmain
-  ; calculate size of sprite being drawn (though really it's kind of expecting 16x16)
+  ; calculate size of sprite being drawn (though really it's kind of expecting Nx16 to begin with)
   ; the height is divided by 16, as we're drawing 16 one-pixel-high strips
   ; note that the iPositions by this point are already multiplied by the projection matrix
   ; so x and y are flipped, and are at different origin points (0,0 is the center, up/right are positive).
