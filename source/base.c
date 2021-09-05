@@ -2,87 +2,115 @@
 // Look for to see meaningful changes: !! Changed for geo shader
 
 #include "internal.h"
+#include "render2d_shbin.h"
 #include "render2g_shbin.h"
 
-C2Di_Context __C2Di_Context;
+C2Di_Context __C2Di_Contexts[C2D_NUM_SHADERS];
 static C3D_Mtx s_projTop, s_projBot;
-static int uLoc_mdlvMtx, uLoc_projMtx;
+C2D_Shader __C2Di_CurrentShader;
 
 static void C2Di_FrameEndHook(void* unused)
 {
 	C2Di_Context* ctx = C2Di_GetContext();
 	C2Di_FlushVtxBuf();
-	ctx->vtxBufPos = 0;
-	ctx->vtxBufLastPos = 0;
+
+	for (int shaderId = 0; shaderId < C2D_NUM_SHADERS; shaderId++) {
+		ctx = &__C2Di_Contexts[shaderId];
+		ctx->vtxBufPos = 0;
+		ctx->vtxBufLastPos = 0;
+	}
 }
 
 bool C2D_Init(size_t maxObjects)
 {
-	C2Di_Context* ctx = C2Di_GetContext();
-	if (ctx->flags & C2DiF_Active)
-		return false;
+	__C2Di_CurrentShader = C2D_Normal;
 
-	ctx->vtxBufSize = 6*maxObjects;
-	ctx->vtxBuf = (C2Di_Vertex*)linearAlloc(ctx->vtxBufSize*sizeof(C2Di_Vertex));
-	if (!ctx->vtxBuf)
-		return false;
+	for (int shaderId = 0; shaderId < C2D_NUM_SHADERS; shaderId++) {
+		C2Di_Context* ctx = &__C2Di_Contexts[shaderId];
+		if (ctx->flags & C2DiF_Active)
+			return false;
 
-	ctx->shader = DVLB_ParseFile((u32*)render2g_shbin, render2g_shbin_size);
-	if (!ctx->shader)
-	{
-		linearFree(ctx->vtxBuf);
-		return false;
+		int vertsPerSprite;
+		switch (shaderId) {
+			case C2D_Normal:
+				vertsPerSprite = 6;
+			case C2D_ScanlineOffset:
+				vertsPerSprite = 2;
+		}
+
+		ctx->vtxBufSize = vertsPerSprite*maxObjects;
+		ctx->vtxBuf = (C2Di_Vertex*)linearAlloc(ctx->vtxBufSize*sizeof(C2Di_Vertex));
+		if (!ctx->vtxBuf)
+			return false;
+
+		switch (shaderId) {
+			case C2D_Normal:
+				ctx->shader = DVLB_ParseFile((u32*)render2g_shbin, render2d_shbin_size);
+				break;
+			case C2D_ScanlineOffset:
+				ctx->shader = DVLB_ParseFile((u32*)render2g_shbin, render2g_shbin_size);
+				break;
+		}
+
+		if (!ctx->shader)
+		{
+			linearFree(ctx->vtxBuf);
+			return false;
+		}
+
+		shaderProgramInit(&ctx->program);
+		shaderProgramSetVsh(&ctx->program, &ctx->shader->DVLE[0]);
+
+		if (shaderId == C2D_ScanlineOffset) {
+			shaderProgramSetGsh(&ctx->program, &ctx->shader->DVLE[1], 4*vertsPerSprite);  //!! Changed for geo shader
+		}
+
+		AttrInfo_Init(&ctx->attrInfo);
+		AttrInfo_AddLoader(&ctx->attrInfo, 0, GPU_FLOAT,         3); // v0=position
+		AttrInfo_AddLoader(&ctx->attrInfo, 1, GPU_FLOAT,         2); // v1=texcoord
+		AttrInfo_AddLoader(&ctx->attrInfo, 2, GPU_FLOAT,         2); // v2=blend
+		AttrInfo_AddLoader(&ctx->attrInfo, 3, GPU_UNSIGNED_BYTE, 4); // v3=color
+
+		BufInfo_Init(&ctx->bufInfo);
+		BufInfo_Add(&ctx->bufInfo, ctx->vtxBuf, sizeof(C2Di_Vertex), 4, 0x3210);
+
+		// Cache these common projection matrices
+		Mtx_OrthoTilt(&s_projTop, 0.0f, 400.0f, 240.0f, 0.0f, 1.0f, -1.0f, true);
+		Mtx_OrthoTilt(&s_projBot, 0.0f, 320.0f, 240.0f, 0.0f, 1.0f, -1.0f, true);
+
+		// Get uniform locations
+		ctx->uLoc_mdlvMtx = shaderInstanceGetUniformLocation(ctx->program.vertexShader, "mdlvMtx");
+		ctx->uLoc_projMtx = shaderInstanceGetUniformLocation(ctx->program.vertexShader, "projMtx");
+
+		// Prepare proctex
+		C3D_ProcTexInit(&ctx->ptBlend, 0, 1);
+		C3D_ProcTexClamp(&ctx->ptBlend, GPU_PT_CLAMP_TO_EDGE, GPU_PT_CLAMP_TO_EDGE);
+		C3D_ProcTexCombiner(&ctx->ptBlend, true, GPU_PT_U, GPU_PT_V);
+		C3D_ProcTexFilter(&ctx->ptBlend, GPU_PT_LINEAR);
+
+		C3D_ProcTexInit(&ctx->ptCircle, 0, 1);
+		C3D_ProcTexClamp(&ctx->ptCircle, GPU_PT_MIRRORED_REPEAT, GPU_PT_MIRRORED_REPEAT);
+		C3D_ProcTexCombiner(&ctx->ptCircle, true, GPU_PT_SQRT2, GPU_PT_SQRT2);
+		C3D_ProcTexFilter(&ctx->ptCircle, GPU_PT_LINEAR);
+
+		// Prepare proctex lut
+		float data[129];
+		int i;
+		for (i = 0; i <= 128; i ++)
+			data[i] = i/128.0f;
+		ProcTexLut_FromArray(&ctx->ptBlendLut, data);
+
+		for (i = 0; i <= 128; i ++)
+			data[i] = (i >= 127) ? 0 : 1;
+		ProcTexLut_FromArray(&ctx->ptCircleLut, data);
+
+		ctx->flags = C2DiF_Active;
+		ctx->vtxBufPos = 0;
+		ctx->vtxBufLastPos = 0;
+		Mtx_Identity(&ctx->projMtx);
+		Mtx_Identity(&ctx->mdlvMtx);
+		ctx->fadeClr = 0;
 	}
-
-	shaderProgramInit(&ctx->program);
-	shaderProgramSetVsh(&ctx->program, &ctx->shader->DVLE[0]);
-	shaderProgramSetGsh(&ctx->program, &ctx->shader->DVLE[1], 8);  //!! Changed for geo shader
-
-	AttrInfo_Init(&ctx->attrInfo);
-	AttrInfo_AddLoader(&ctx->attrInfo, 0, GPU_FLOAT,         3); // v0=position
-	AttrInfo_AddLoader(&ctx->attrInfo, 1, GPU_FLOAT,         2); // v1=texcoord
-	AttrInfo_AddLoader(&ctx->attrInfo, 2, GPU_FLOAT,         2); // v2=blend
-	AttrInfo_AddLoader(&ctx->attrInfo, 3, GPU_UNSIGNED_BYTE, 4); // v3=color
-
-	BufInfo_Init(&ctx->bufInfo);
-	BufInfo_Add(&ctx->bufInfo, ctx->vtxBuf, sizeof(C2Di_Vertex), 4, 0x3210);
-
-	// Cache these common projection matrices
-	Mtx_OrthoTilt(&s_projTop, 0.0f, 400.0f, 240.0f, 0.0f, 1.0f, -1.0f, true);
-	Mtx_OrthoTilt(&s_projBot, 0.0f, 320.0f, 240.0f, 0.0f, 1.0f, -1.0f, true);
-
-	// Get uniform locations
-	uLoc_mdlvMtx = shaderInstanceGetUniformLocation(ctx->program.vertexShader, "mdlvMtx");
-	uLoc_projMtx = shaderInstanceGetUniformLocation(ctx->program.vertexShader, "projMtx");
-
-	// Prepare proctex
-	C3D_ProcTexInit(&ctx->ptBlend, 0, 1);
-	C3D_ProcTexClamp(&ctx->ptBlend, GPU_PT_CLAMP_TO_EDGE, GPU_PT_CLAMP_TO_EDGE);
-	C3D_ProcTexCombiner(&ctx->ptBlend, true, GPU_PT_U, GPU_PT_V);
-	C3D_ProcTexFilter(&ctx->ptBlend, GPU_PT_LINEAR);
-
-	C3D_ProcTexInit(&ctx->ptCircle, 0, 1);
-	C3D_ProcTexClamp(&ctx->ptCircle, GPU_PT_MIRRORED_REPEAT, GPU_PT_MIRRORED_REPEAT);
-	C3D_ProcTexCombiner(&ctx->ptCircle, true, GPU_PT_SQRT2, GPU_PT_SQRT2);
-	C3D_ProcTexFilter(&ctx->ptCircle, GPU_PT_LINEAR);
-
-	// Prepare proctex lut
-	float data[129];
-	int i;
-	for (i = 0; i <= 128; i ++)
-		data[i] = i/128.0f;
-	ProcTexLut_FromArray(&ctx->ptBlendLut, data);
-
-	for (i = 0; i <= 128; i ++)
-		data[i] = (i >= 127) ? 0 : 1;
-	ProcTexLut_FromArray(&ctx->ptCircleLut, data);
-
-	ctx->flags = C2DiF_Active;
-	ctx->vtxBufPos = 0;
-	ctx->vtxBufLastPos = 0;
-	Mtx_Identity(&ctx->projMtx);
-	Mtx_Identity(&ctx->mdlvMtx);
-	ctx->fadeClr = 0;
 
 	C3D_FrameEndHook(C2Di_FrameEndHook, NULL);
 	return true;
@@ -90,19 +118,23 @@ bool C2D_Init(size_t maxObjects)
 
 void C2D_Fini(void)
 {
-	C2Di_Context* ctx = C2Di_GetContext();
-	if (!(ctx->flags & C2DiF_Active))
-		return;
+	for (int shaderId = 0; shaderId < C2D_NUM_SHADERS; shaderId++) {
+		C2Di_Context* ctx = &__C2Di_Contexts[shaderId];
+		if (!(ctx->flags & C2DiF_Active))
+			continue;
 
-	ctx->flags = 0;
+		ctx->flags = 0;
+		shaderProgramFree(&ctx->program);
+		DVLB_Free(ctx->shader);
+		linearFree(ctx->vtxBuf);
+	}
 	C3D_FrameEndHook(NULL, NULL);
-	shaderProgramFree(&ctx->program);
-	DVLB_Free(ctx->shader);
-	linearFree(ctx->vtxBuf);
 }
 
-void C2D_Prepare(void)
+void C2D_Prepare(C2D_Shader shaderId)
 {
+	__C2Di_CurrentShader = shaderId;
+
 	C2Di_Context* ctx = C2Di_GetContext();
 	if (!(ctx->flags & C2DiF_Active))
 		return;
@@ -522,7 +554,17 @@ void C2Di_FlushVtxBuf(void)
 	C2Di_Context* ctx = C2Di_GetContext();
 	size_t len = ctx->vtxBufPos - ctx->vtxBufLastPos;
 	if (!len) return;
-	C3D_DrawArrays(GPU_GEOMETRY_PRIM, ctx->vtxBufLastPos, len);  //!! Changed for geo shader
+
+	GPU_Primitive_t primitive;
+
+	if (__C2Di_CurrentShader == C2D_ScanlineOffset) {
+		primitive = GPU_GEOMETRY_PRIM;
+	}
+	else {
+		primitive = GPU_TRIANGLES;
+	}
+
+	C3D_DrawArrays(primitive, ctx->vtxBufLastPos, len);  //!! Changed for geo shader
 	ctx->vtxBufLastPos = ctx->vtxBufPos;
 }
 
@@ -535,9 +577,9 @@ void C2Di_Update(void)
 	C2Di_FlushVtxBuf();
 
 	if (flags & C2DiF_DirtyProj)
-		C3D_FVUnifMtx4x4(GPU_VERTEX_SHADER, uLoc_projMtx, &ctx->projMtx);
+		C3D_FVUnifMtx4x4(GPU_VERTEX_SHADER, ctx->uLoc_projMtx, &ctx->projMtx);
 	if (flags & C2DiF_DirtyMdlv)
-		C3D_FVUnifMtx4x4(GPU_VERTEX_SHADER, uLoc_mdlvMtx, &ctx->mdlvMtx);
+		C3D_FVUnifMtx4x4(GPU_VERTEX_SHADER, ctx->uLoc_mdlvMtx, &ctx->mdlvMtx);
 	if (flags & C2DiF_DirtyTex)
 		C3D_TexBind(0, ctx->curTex);
 	if (flags & C2DiF_DirtySrc)

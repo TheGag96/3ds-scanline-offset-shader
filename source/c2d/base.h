@@ -57,6 +57,14 @@ typedef struct
 	C2D_Tint corners[4];
 } C2D_ImageTint;
 
+typedef enum
+{
+  C2D_Normal,
+  C2D_ScanlineOffset,
+} C2D_Shader;
+
+#define C2D_NUM_SHADERS (C2D_ScanlineOffset + 1)
+
 /** @defgroup Helper Helper functions
  *  @{
  */
@@ -202,7 +210,7 @@ void C2D_Fini(void);
 /** @brief Prepares the GPU for rendering 2D content
  *  @remarks This needs to be done only once in the program if citro2d is the sole user of the GPU.
  */
-void C2D_Prepare(void);
+void C2D_Prepare(C2D_Shader shaderId);
 
 /** @brief Ensures all 2D objects so far have been drawn */
 void C2D_Flush(void);

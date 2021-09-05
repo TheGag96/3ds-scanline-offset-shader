@@ -31,6 +31,8 @@ typedef struct
 	C3D_Mtx mdlvMtx;
 	C3D_Tex* curTex;
 	u32 fadeClr;
+
+	int uLoc_mdlvMtx, uLoc_projMtx;
 } C2Di_Context;
 
 enum
@@ -61,8 +63,9 @@ struct C2D_Font_s
 
 static inline C2Di_Context* C2Di_GetContext(void)
 {
-	extern C2Di_Context __C2Di_Context;
-	return &__C2Di_Context;
+	extern C2Di_Context __C2Di_Contexts[C2D_NUM_SHADERS];
+	extern C2D_Shader __C2Di_CurrentShader;
+	return &__C2Di_Contexts[__C2Di_CurrentShader];
 }
 
 static inline void C2Di_SetSrc(u32 src)

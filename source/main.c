@@ -146,8 +146,8 @@ int main()
   romfsInit();
   gfxInitDefault();
   C3D_Init(C3D_DEFAULT_CMDBUF_SIZE);
-  C2D_Init(C2D_DEFAULT_MAX_OBJECTS);
-  C2D_Prepare();
+  C2D_Init(C2D_DEFAULT_MAX_OBJECTS/2);
+  C2D_Prepare(C2D_ScanlineOffset);
   consoleInit(GFX_BOTTOM, NULL);
 
   // Create screens
@@ -208,9 +208,10 @@ int main()
 
     // Render the scene
     C3D_FrameBegin(C3D_FRAME_SYNCDRAW);
-    buildScanlineOffsetTable();
     C2D_TargetClear(top, C2D_Color32f(0.3f, 0.7f, 1.0f, 1.0f));
     C2D_SceneBegin(top);
+    C2D_Prepare(C2D_ScanlineOffset);
+    buildScanlineOffsetTable();
 
     C2D_SpriteSetPos(&sprites[PIPE_TL], 300,    6*16);
     C2D_SpriteSetPos(&sprites[PIPE_TR], 300+16, 6*16);
@@ -242,16 +243,19 @@ int main()
     MyDrawSprite(&sprites[DRAGON_COIN_T]);
     MyDrawSprite(&sprites[DRAGON_COIN_B]);
 
+    C2D_Flush();
+    C2D_Prepare(C2D_Normal);
     C2D_SpriteSetPos(&sprites[TURN_BLOCK], 10, 50);
-    MyDrawSprite(&sprites[TURN_BLOCK]);
+    C2D_DrawSprite(&sprites[TURN_BLOCK]); // GPU hangs due to this call!
     C2D_SpriteSetPos(&sprites[TURN_BLOCK], 200, 20);
-    MyDrawSprite(&sprites[TURN_BLOCK]);
+    C2D_DrawSprite(&sprites[TURN_BLOCK]);
     C2D_SpriteSetPos(&sprites[TURN_BLOCK], 120, 70);
-    MyDrawSprite(&sprites[TURN_BLOCK]);
+    C2D_DrawSprite(&sprites[TURN_BLOCK]);
     C2D_SpriteSetPos(&sprites[TURN_BLOCK], 170, 140);
-    MyDrawSprite(&sprites[TURN_BLOCK]);
+    C2D_DrawSprite(&sprites[TURN_BLOCK]);
     C2D_SpriteSetPos(&sprites[TURN_BLOCK], 40, 100);
-    MyDrawSprite(&sprites[TURN_BLOCK]);
+    C2D_DrawSprite(&sprites[TURN_BLOCK]);
+    C2D_Flush();
 
     C3D_FrameEnd(0);
   }
