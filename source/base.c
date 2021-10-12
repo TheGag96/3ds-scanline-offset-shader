@@ -1,5 +1,4 @@
 // citro2d's base.c, altered slightly to work with the geometry shader.
-// Look for to see meaningful changes: !! Changed for geo shader
 
 #include "internal.h"
 #include "render2d_shbin.h"
@@ -34,8 +33,10 @@ bool C2D_Init(size_t maxObjects)
 		switch (shaderId) {
 			case C2D_Normal:
 				vertsPerSprite = 6;
+				break;
 			case C2D_ScanlineOffset:
 				vertsPerSprite = 2;
+				break;
 		}
 
 		ctx->vtxBufSize = vertsPerSprite*maxObjects;
@@ -45,7 +46,7 @@ bool C2D_Init(size_t maxObjects)
 
 		switch (shaderId) {
 			case C2D_Normal:
-				ctx->shader = DVLB_ParseFile((u32*)render2g_shbin, render2d_shbin_size);
+				ctx->shader = DVLB_ParseFile((u32*)render2d_shbin, render2d_shbin_size);
 				break;
 			case C2D_ScanlineOffset:
 				ctx->shader = DVLB_ParseFile((u32*)render2g_shbin, render2g_shbin_size);
@@ -61,8 +62,13 @@ bool C2D_Init(size_t maxObjects)
 		shaderProgramInit(&ctx->program);
 		shaderProgramSetVsh(&ctx->program, &ctx->shader->DVLE[0]);
 
-		if (shaderId == C2D_ScanlineOffset) {
-			shaderProgramSetGsh(&ctx->program, &ctx->shader->DVLE[1], 4*vertsPerSprite);  //!! Changed for geo shader
+		switch (shaderId) {
+			case C2D_Normal:
+				shaderProgramSetGsh(&ctx->program, &ctx->shader->DVLE[1], 4*vertsPerSprite/2);
+				break;
+			case C2D_ScanlineOffset:
+				shaderProgramSetGsh(&ctx->program, &ctx->shader->DVLE[1], 4*vertsPerSprite);
+				break;
 		}
 
 		AttrInfo_Init(&ctx->attrInfo);
@@ -557,14 +563,9 @@ void C2Di_FlushVtxBuf(void)
 
 	GPU_Primitive_t primitive;
 
-	if (__C2Di_CurrentShader == C2D_ScanlineOffset) {
-		primitive = GPU_GEOMETRY_PRIM;
-	}
-	else {
-		primitive = GPU_TRIANGLES;
-	}
+	primitive = GPU_GEOMETRY_PRIM;
 
-	C3D_DrawArrays(primitive, ctx->vtxBufLastPos, len);  //!! Changed for geo shader
+	C3D_DrawArrays(primitive, ctx->vtxBufLastPos, len);
 	ctx->vtxBufLastPos = ctx->vtxBufPos;
 }
 

@@ -1,0 +1,60 @@
+; Example PICA200 geometry shader
+.gsh point c0
+
+; Uniforms
+.fvec projection[4]
+
+; Constants
+
+; Outputs - this time the type *is* used
+.out oPosition  position
+.out oTexCoord0 texcoord0
+.out oTexCoord1 texcoord1
+.out oColor     color
+
+; Inputs: we will receive the following inputs:
+; v0-v3:  data of the first vertex
+; v4-v7:  data of the second vertex
+; v8-v11: data of the third vertex
+
+; Inputs
+.in iPosition_1      v0
+.in iTexCoord_1      v1
+.in iProcTexCoord_1  v2
+.in iColor_1         v3
+.in iPosition_2      v4
+.in iTexCoord_2      v5
+.in iProcTexCoord_2  v6
+.in iColor_2         v7
+.in iPosition_3      v8
+.in iTexCoord_3      v9
+.in iProcTexCoord_3  v10
+.in iColor_3         v11
+
+.entry render2d_gmain
+.proc render2d_gmain
+  setemit 0
+  mov oPosition,  iPosition_1
+  mov oTexCoord0, iTexCoord_1
+  mov oTexCoord1, iProcTexCoord_1
+  mov oColor,     iColor_1
+  emit
+
+  ; Emit the second vertex
+  setemit 1
+  mov oPosition,  iPosition_2
+  mov oTexCoord0, iTexCoord_2
+  mov oTexCoord1, iProcTexCoord_2
+  mov oColor,     iColor_2
+  emit
+
+  ; Emit the third vertex and finish the primitive
+  setemit 2, prim
+  mov oPosition,  iPosition_3
+  mov oTexCoord0, iTexCoord_3
+  mov oTexCoord1, iProcTexCoord_3
+  mov oColor,     iColor_3
+  emit
+
+  end
+.end
