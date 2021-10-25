@@ -7,7 +7,7 @@
 #include <stdio.h>
 #include "program_shbin.h"
 
-static int uLoc_offsets;
+static int uLoc_offsets = -1;
 
 float gameTime      = 0;
 float timeStep      = 0.08;
@@ -62,6 +62,10 @@ static void buildScanlineOffsetTable(void)
   else if (gameTime < -2*M_PI) gameTime += 2*M_PI;
 
   // Update the uniforms
+  if (uLoc_offsets == -1) {
+    C2Di_Context* ctx = C2Di_GetContext();
+    uLoc_offsets = shaderInstanceGetUniformLocation(ctx->program.geometryShader, "offsets");
+  }
   C3D_FVUnifMtxNx4(GPU_GEOMETRY_SHADER, uLoc_offsets, (C3D_Mtx*) offsetTable, NUM_OFFSETS/4);
 }
 
@@ -147,7 +151,7 @@ int main()
   gfxInitDefault();
   C3D_Init(C3D_DEFAULT_CMDBUF_SIZE);
   C2D_Init(C2D_DEFAULT_MAX_OBJECTS/2);
-  C2D_Prepare(C2D_ScanlineOffset);
+  C2D_Prepare(C2D_Normal);
   consoleInit(GFX_BOTTOM, NULL);
 
   // Create screens
@@ -162,9 +166,6 @@ int main()
   for (size_t i = 0; i < numSprites; i++) {
     C2D_SpriteFromSheet(&sprites[i], spriteSheet, i);
   }
-
-  C2Di_Context* ctx = C2Di_GetContext();
-  uLoc_offsets = shaderInstanceGetUniformLocation(ctx->program.geometryShader, "offsets");
 
   // Main loop
   while (aptMainLoop())
@@ -210,6 +211,7 @@ int main()
     C3D_FrameBegin(C3D_FRAME_SYNCDRAW);
     C2D_TargetClear(top, C2D_Color32f(0.3f, 0.7f, 1.0f, 1.0f));
     C2D_SceneBegin(top);
+    // C2D_SceneTarget(top);
     C2D_Prepare(C2D_ScanlineOffset);
     buildScanlineOffsetTable();
 

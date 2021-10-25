@@ -204,9 +204,7 @@ void C2D_Flush(void)
 
 void C2D_SceneSize(u32 width, u32 height, bool tilt)
 {
-	C2Di_Context* ctx = C2Di_GetContext();
-	if (!(ctx->flags & C2DiF_Active))
-		return;
+	C3D_Mtx projResult;
 
 	if (tilt)
 	{
@@ -215,27 +213,40 @@ void C2D_SceneSize(u32 width, u32 height, bool tilt)
 		height = temp;
 	}
 
-	ctx->flags |= C2DiF_DirtyProj;
-	ctx->sceneW = width;
-	ctx->sceneH = height;
+	bool constructed = false;
 
 	// Check for cached projection matrices
 	if (height == GSP_SCREEN_WIDTH && tilt)
 	{
 		if (width == GSP_SCREEN_HEIGHT_TOP || width == GSP_SCREEN_HEIGHT_TOP_2X)
 		{
-			Mtx_Copy(&ctx->projMtx, &s_projTop);
-			return;
+			Mtx_Copy(&projResult, &s_projTop);
+			constructed = true;
 		}
 		else if (width == GSP_SCREEN_HEIGHT_BOTTOM)
 		{
-			Mtx_Copy(&ctx->projMtx, &s_projBot);
-			return;
+			Mtx_Copy(&projResult, &s_projBot);
+			constructed = true;
 		}
 	}
 
 	// Construct the projection matrix
-	(tilt ? Mtx_OrthoTilt : Mtx_Ortho)(&ctx->projMtx, 0.0f, width, height, 0.0f, 1.0f, -1.0f, true);
+	if (!constructed) {
+		(tilt ? Mtx_OrthoTilt : Mtx_Ortho)(&projResult, 0.0f, width, height, 0.0f, 1.0f, -1.0f, true);
+	}
+
+	for (int shaderId = 0; shaderId < C2D_NUM_SHADERS; shaderId++) {
+		C2Di_Context* ctx = &__C2Di_Contexts[shaderId];
+
+		if (!(ctx->flags & C2DiF_Active))
+			continue;
+
+		ctx->flags |= C2DiF_DirtyProj;
+		ctx->sceneW = width;
+		ctx->sceneH = height;
+
+		Mtx_Copy(&ctx->projMtx, &projResult);
+	}
 }
 
 void C2D_ViewReset(void)
